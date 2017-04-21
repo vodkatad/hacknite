@@ -1,0 +1,7 @@
+[package]
+name = "vmc"
+version = "1.0.0"
+authors = ["Federico Di Gregorio <fog@initd.org>", "Elena Grassi <grassi.e@gmail.com>"]
+
+[dependencies]
+argparse = "*"

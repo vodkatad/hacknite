@@ -1,0 +1,13 @@
+@SP
+AM=M-1
+D=M
+A=A-1
+D=D-M
+@{label_false}
+D;JNE
+@0
+D=!A
+({label_false})
+@SP
+A=M-1
+M=D
