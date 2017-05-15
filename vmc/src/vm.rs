@@ -24,12 +24,20 @@ impl VM {
         let mut buffer = String::new();
 
         while reader.read_line(&mut buffer).unwrap() > 0 {
-            let command = parse_line(&buffer);
+            let command = self.parse_line(&buffer);
+            if let VmCommand::None = command {
+            }
+            else {
+                writer.write(format!("// {}\n", buffer).as_bytes()).expect("could not write to output buffer");
+            }
             match command {
                 VmCommand::None => (),
                 VmCommand::Arithmetic(command) => self.emit_arithmetic(writer, command),
                 VmCommand::Push(segment, value) => self.emit_push(writer, segment, value),
                 VmCommand::Pop(segment, value) => self.emit_pop(writer, segment, value),
+                VmCommand::Label(label) => self.emit_label(writer, &label),
+                VmCommand::Goto(label) => self.emit_goto(writer, &label),
+                VmCommand::IfGoto(label) => self.emit_if_goto(writer, &label),
             }
             buffer.clear();
         }
@@ -88,37 +96,58 @@ impl VM {
         writer.write(text.as_bytes()).expect("could not write to output buffer");
     }
 
+    fn emit_label(&self, writer: &mut BufWriter<fs::File>, label: &str) {
+        writer.write(format!("({})\n", label).as_bytes()).expect("could not write to output buffer");
+    }
+
+    fn emit_goto(&self, writer: &mut BufWriter<fs::File>, label: &str) {
+        writer.write(format!("@{}\n0;JMP\n", label).as_bytes()).expect("could not write to output buffer");
+    }
+
+    fn emit_if_goto(&self, writer: &mut BufWriter<fs::File>, label: &str) {
+        writer.write(format!(include_str!("templates/if-goto.asm"), label = label).as_bytes())
+            .expect("could not write to output buffer");
+    }
+
     fn get_label(&self) -> String {
         let v = self.label_counter.get();
         let label = format!("{}.{}", self.label_base, v);
         self.label_counter.set(v+1);
         label
     }
-}
 
-fn parse_line(line: &str) -> VmCommand {
-    let parts = line.split_whitespace().collect::<Vec<_>>();
-
-    if parts.len() > 0 && parts[0] != "//" {
-        match parts[0] {
-            "neg" => VmCommand::Arithmetic(VmArithmeticCommand::Neg),
-            "add" => VmCommand::Arithmetic(VmArithmeticCommand::Add),
-            "sub" => VmCommand::Arithmetic(VmArithmeticCommand::Sub),
-            "eq"  => VmCommand::Arithmetic(VmArithmeticCommand::Eq),
-            "gt"  => VmCommand::Arithmetic(VmArithmeticCommand::Gt),
-            "lt"  => VmCommand::Arithmetic(VmArithmeticCommand::Lt),
-            "not" => VmCommand::Arithmetic(VmArithmeticCommand::Not),
-            "and" => VmCommand::Arithmetic(VmArithmeticCommand::And),
-            "or"  => VmCommand::Arithmetic(VmArithmeticCommand::Or),
-
-            "push" => VmCommand::Push(parse_vmsegment(parts[1]), i32::from_str(parts[2]).unwrap()),
-            "pop"  => VmCommand::Pop(parse_vmsegment(parts[1]), i32::from_str(parts[2]).unwrap()),
-
-            _ => panic!("unknown command: {}", parts[0])
-        }
+    fn get_named_label(&self, label: &str) -> String {
+        format!("{}.{}", self.label_base, label)
     }
-    else {
-        VmCommand::None
+
+    fn parse_line(&self, line: &str) -> VmCommand {
+        let parts = line.split_whitespace().collect::<Vec<_>>();
+
+        if parts.len() > 0 && parts[0] != "//" {
+            match parts[0] {
+                "neg" => VmCommand::Arithmetic(VmArithmeticCommand::Neg),
+                "add" => VmCommand::Arithmetic(VmArithmeticCommand::Add),
+                "sub" => VmCommand::Arithmetic(VmArithmeticCommand::Sub),
+                "eq"  => VmCommand::Arithmetic(VmArithmeticCommand::Eq),
+                "gt"  => VmCommand::Arithmetic(VmArithmeticCommand::Gt),
+                "lt"  => VmCommand::Arithmetic(VmArithmeticCommand::Lt),
+                "not" => VmCommand::Arithmetic(VmArithmeticCommand::Not),
+                "and" => VmCommand::Arithmetic(VmArithmeticCommand::And),
+                "or"  => VmCommand::Arithmetic(VmArithmeticCommand::Or),
+
+                "push" => VmCommand::Push(parse_vmsegment(parts[1]), i32::from_str(parts[2]).unwrap()),
+                "pop"  => VmCommand::Pop(parse_vmsegment(parts[1]), i32::from_str(parts[2]).unwrap()),
+
+                "label" => VmCommand::Label(self.get_named_label(parts[1])),
+                "goto" => VmCommand::Goto(self.get_named_label(parts[1])),
+                "if-goto" => VmCommand::IfGoto(self.get_named_label(parts[1])),
+
+                _ => panic!("unknown command: {}", parts[0])
+            }
+        }
+        else {
+            VmCommand::None
+        }
     }
 }
 
@@ -141,7 +170,10 @@ enum VmCommand {
     None,
     Arithmetic(VmArithmeticCommand),
     Push(VmSegment, i32),
-    Pop(VmSegment, i32)
+    Pop(VmSegment, i32),
+    Label(String),
+    Goto(String),
+    IfGoto(String)
 }
 
 #[derive(Debug)]
